@@ -1,0 +1,47 @@
+# Secrets — never commit real keys/credentials
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# SQLite database + its WAL/journal sidecar files
+# (WAL mode, enabled in db/sqlite.js, creates these alongside the .db file)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# Build output (if you add a bundler/frontend build step later)
+dist/
+build/
+
+# Stripe CLI local config (if you run `stripe login` in this repo)
+.stripe/
+
+# Railway CLI local config
+.railway/
+
+# Test coverage output
+coverage/
+
+# npm cache/debug artifacts
+.npm/
+*.tsbuildinfo
