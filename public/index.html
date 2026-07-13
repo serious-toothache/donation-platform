@@ -58,6 +58,40 @@
     margin-bottom: 12px;
   }
 
+  .min-amount-warning {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    color: #c0392b;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 16px;
+  }
+  .min-amount-warning.visible { display: flex; }
+  .min-amount-warning .warn-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #c0392b;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .custom-input-wrap.has-value {
+    background: #0e6e83;
+    border-color: #0e6e83;
+  }
+  .custom-input-wrap.has-value span,
+  .custom-input-wrap.has-value input {
+    color: #fff;
+  }
+  .custom-input-wrap.has-value input::placeholder { color: rgba(255,255,255,0.7); }
+
   .amount-tile {
     border: 1.5px solid #0e6e83;
     border-radius: 4px;
@@ -70,7 +104,7 @@
     transition: background 0.15s, color 0.15s;
   }
 
-  .amount-tile:hover { background: #4DB8C8; color:#fff }
+  .amount-tile:hover { background: #eaf5f7; }
   .amount-tile.selected { background: #0e6e83; color: #fff; }
 
   .custom-tile { grid-column: 1 / -1; text-align: center; }
@@ -280,6 +314,11 @@
       </div>
     </div>
 
+    <div class="min-amount-warning" id="min-amount-warning">
+      <span class="warn-icon">!</span>
+      <span>The minimum donation amount is $5.00</span>
+    </div>
+
     <div class="amount-grid" id="amount-grid">
       <button class="amount-tile" data-amount="5000">$5,000</button>
       <button class="amount-tile" data-amount="1000">$1,000</button>
@@ -413,7 +452,7 @@
 
 <script>
   // ---------------- Step 1 state ----------------
-  const MIN_AMOUNT = 1;
+  const MIN_AMOUNT = 5;   // minimum donation amount
   const MAX_AMOUNT = 999999;
   let selectedAmount = null;
   let isMonthly = false;
@@ -424,6 +463,7 @@
   const monthlyToggle = document.getElementById('monthly-toggle');
   const continueBtn = document.getElementById('continue-btn');
   const fundSelect = document.getElementById('fund-select');
+  const minAmountWarning = document.getElementById('min-amount-warning');
 
   function sanitizeAmountInput(raw) {
     let cleaned = raw.replace(/[^0-9.]/g, '');
@@ -437,6 +477,10 @@
     return cleaned;
   }
 
+  function setMinAmountWarning(show) {
+    minAmountWarning.classList.toggle('visible', show);
+  }
+
   function renderCustomInput() {
     customTile.outerHTML = `
       <div class="custom-input-wrap" id="custom-input-wrap">
@@ -446,6 +490,7 @@
       </div>
     `;
     const input = document.getElementById('custom-amount-input');
+    const wrap = document.getElementById('custom-input-wrap');
     input.focus();
     input.addEventListener('input', () => {
       const cursorAtEnd = input.selectionEnd === input.value.length;
@@ -454,10 +499,27 @@
         input.value = sanitized;
         if (cursorAtEnd) input.setSelectionRange(sanitized.length, sanitized.length);
       }
+
+      wrap.classList.toggle('has-value', sanitized.length > 0);
+
       const val = parseFloat(sanitized);
-      selectedAmount = (!isFinite(val) || val < MIN_AMOUNT || val > MAX_AMOUNT)
-        ? null
-        : Math.round(val * 100) / 100;
+      const hasEnteredSomething = sanitized.length > 0 && isFinite(val);
+
+      if (!hasEnteredSomething) {
+        selectedAmount = null;
+        setMinAmountWarning(false);
+      } else if (val < MIN_AMOUNT) {
+        // Below minimum: keep the button disabled, but don't wipe out
+        // what they typed — show the warning instead so it's clear why.
+        selectedAmount = null;
+        setMinAmountWarning(true);
+      } else if (val > MAX_AMOUNT) {
+        selectedAmount = null;
+        setMinAmountWarning(false);
+      } else {
+        selectedAmount = Math.round(val * 100) / 100;
+        setMinAmountWarning(false);
+      }
       updateContinueButton();
     });
     input.addEventListener('paste', (e) => {
@@ -470,6 +532,7 @@
 
   function selectTile(tile) {
     tiles.forEach(t => t.classList.remove('selected'));
+    setMinAmountWarning(false);
     if (tile.dataset.amount === 'custom') {
       renderCustomInput();
       selectedAmount = null;
