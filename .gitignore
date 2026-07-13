@@ -11,7 +11,7 @@ node_modules/
 *.db
 *.db-wal
 *.db-shm
-*.sqlite
+*.sqlite~~~~
 *.sqlite3
 
 # Logs

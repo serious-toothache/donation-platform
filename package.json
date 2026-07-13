@@ -1,0 +1,21 @@
+{
+  "name": "donation-platform",
+  "version": "1.0.0",
+  "description": "Stripe-powered donation form with one-time and recurring giving",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/serious-toothache/donation-platform.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/serious-toothache/donation-platform/issues"
+  },
+  "homepage": "https://github.com/serious-toothache/donation-platform#readme"
+}

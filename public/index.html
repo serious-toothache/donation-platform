@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Donate</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: #f4f4f2;
+    margin: 0;
+    padding: 40px 16px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .card {
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    padding: 32px;
+    width: 100%;
+    max-width: 640px;
+  }
+
+  .step { display: none; }
+  .step.active { display: block; }
+
+  /* ---------- Step 1: amount ---------- */
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+
+  .card-header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 0;
+    color: #1a1a1a;
+  }
+
+  .secure-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+    letter-spacing: 0.5px;
+  }
+
+  .amount-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .amount-tile {
+    border: 1.5px solid #0e6e83;
+    border-radius: 4px;
+    background: #fff;
+    color: #0e6e83;
+    font-size: 17px;
+    font-weight: 600;
+    padding: 18px 8px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .amount-tile:hover { background: #4DB8C8; color:#fff }
+  .amount-tile.selected { background: #0e6e83; color: #fff; }
+
+  .custom-tile { grid-column: 1 / -1; text-align: center; }
+
+  .custom-input-wrap {
+    grid-column: 1 / -1;
+    border: 1.5px solid #0e6e83;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+  }
+
+  .custom-input-wrap span { color: #0e6e83; font-weight: 600; font-size: 17px; }
+
+  .custom-input-wrap input {
+    border: none;
+    outline: none;
+    font-size: 17px;
+    font-weight: 600;
+    color: #0e6e83;
+    padding: 16px 8px;
+    width: 100%;
+  }
+
+  .monthly-toggle {
+    background: #0e6e83;
+    border-radius: 4px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    margin: 20px 0 24px;
+    user-select: none;
+  }
+
+  .monthly-toggle .checkbox {
+    width: 20px; height: 20px; border-radius: 3px; background: #fff;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .monthly-toggle .checkbox svg { display: none; width: 14px; height: 14px; }
+  .monthly-toggle.active .checkbox svg { display: block; }
+  .monthly-toggle span.label { color: #fff; font-size: 15px; font-weight: 500; }
+
+  .field-label { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px; }
+
+  select {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 15px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #f2f2f0;
+    color: #1a1a1a;
+    margin-bottom: 24px;
+    appearance: none;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8"><path d="M1 1l5 5 5-5" stroke="%23333" stroke-width="1.5" fill="none"/></svg>');
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+  }
+
+  .primary-btn {
+    width: 100%;
+    background: #0e6e83;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .primary-btn:hover { background: #0b5c6e; }
+  .primary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .secondary-btn {
+    width: 100%;
+    background: transparent;
+    color: #0e6e83;
+    border: none;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+
+  .error-msg {
+    color: #b00020;
+    font-size: 13px;
+    margin-top: 8px;
+    display: none;
+  }
+
+  /* ---------- Step 2: My Information ---------- */
+  h2.info-heading {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 30px;
+    font-weight: 700;
+    color: #14213d;
+    margin: 0 0 24px;
+  }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+
+  .form-field label {
+    display: block;
+    font-size: 14px;
+    color: #1a1a1a;
+    margin-bottom: 6px;
+  }
+  .form-field label .req { color: #b00020; }
+
+  .form-field input[type="text"],
+  .form-field input[type="email"],
+  .form-field input[type="tel"] {
+    width: 100%;
+    padding: 11px 12px;
+    font-size: 14px;
+    border: 1px solid #999;
+    border-radius: 3px;
+    outline: none;
+  }
+  .form-field input:focus {
+    border-color: #0e6e83;
+    box-shadow: 0 0 0 1px #0e6e83;
+  }
+  .form-field input.invalid { border-color: #b00020; }
+
+  .form-field.full { grid-column: 1 / -1; margin-bottom: 18px; }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .checkbox-row input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #0e6e83;
+    cursor: pointer;
+  }
+  .checkbox-row span { font-size: 14px; color: #1a1a1a; }
+
+  .add-line-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    color: #0e6e83;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: 18px;
+  }
+  .add-line-btn .plus-circle {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #0e6e83; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; line-height: 1;
+  }
+
+  .field-error {
+    color: #b00020;
+    font-size: 12px;
+    margin-top: 4px;
+    display: none;
+  }
+
+  .step-nav { display: flex; gap: 12px; margin-top: 8px; }
+  .step-nav .primary-btn { flex: 1; }
+  .step-nav .back-btn {
+    flex: 0 0 auto;
+    background: #fff;
+    color: #0e6e83;
+    border: 1.5px solid #0e6e83;
+    border-radius: 4px;
+    padding: 16px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+
+  <!-- ===================== STEP 1: Gift amount ===================== -->
+  <div class="step active" id="step-1">
+    <div class="card-header">
+      <h1>Choose Your Gift Amount</h1>
+      <div class="secure-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2"><rect x="4" y="11" width="16" height="9" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        SECURE
+      </div>
+    </div>
+
+    <div class="amount-grid" id="amount-grid">
+      <button class="amount-tile" data-amount="5000">$5,000</button>
+      <button class="amount-tile" data-amount="1000">$1,000</button>
+      <button class="amount-tile" data-amount="500">$500</button>
+      <button class="amount-tile" data-amount="250">$250</button>
+      <button class="amount-tile" data-amount="100">$100</button>
+      <button class="amount-tile" data-amount="50">$50</button>
+      <button class="amount-tile custom-tile" id="custom-tile" data-amount="custom">Custom</button>
+    </div>
+
+    <div class="monthly-toggle" id="monthly-toggle">
+      <div class="checkbox">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0e6e83" stroke-width="3"><path d="M4 12l6 6L20 6"/></svg>
+      </div>
+      <span class="label">Yes, make my gift a monthly donation.</span>
+    </div>
+
+    <div class="field-label">Direct My Gift</div>
+    <select id="fund-select">
+      <option>Fred Hutch greatest need</option>
+      <option>Cancer research</option>
+      <option>Patient care programs</option>
+      <option>Clinical trials</option>
+    </select>
+
+    <button class="primary-btn" id="continue-btn" disabled>Select an amount</button>
+  </div>
+
+  <!-- ===================== STEP 2: My Information ===================== -->
+  <div class="step" id="step-2">
+    <h2 class="info-heading">My Information</h2>
+
+    <div class="form-row">
+      <div class="form-field">
+        <label>First Name:<span class="req">*</span></label>
+        <input type="text" id="first-name" autocomplete="given-name" />
+        <div class="field-error" id="err-first-name">First name is required.</div>
+      </div>
+      <div class="form-field">
+        <label>Last Name:<span class="req">*</span></label>
+        <input type="text" id="last-name" autocomplete="family-name" />
+        <div class="field-error" id="err-last-name">Last name is required.</div>
+      </div>
+    </div>
+
+    <label class="checkbox-row" id="org-toggle">
+      <input type="checkbox" id="on-behalf-org" />
+      <span>Make this gift on behalf of an organization</span>
+    </label>
+
+    <div class="form-field full" id="org-field" style="display:none;">
+      <label>Organization Name:<span class="req">*</span></label>
+      <input type="text" id="organization" />
+      <div class="field-error" id="err-organization">Organization name is required.</div>
+    </div>
+
+    <div class="form-field full">
+      <label>Phone Number:</label>
+      <input type="tel" id="phone" autocomplete="tel" />
+    </div>
+
+    <div class="form-field full">
+      <label>Email Address:<span class="req">*</span></label>
+      <input type="email" id="email" autocomplete="email" />
+      <div class="field-error" id="err-email">Enter a valid email address.</div>
+    </div>
+
+    <div class="form-field full">
+      <label>Street 1:<span class="req">*</span></label>
+      <input type="text" id="address-line1" autocomplete="address-line1" />
+      <div class="field-error" id="err-address-line1">Street address is required.</div>
+    </div>
+
+    <button type="button" class="add-line-btn" id="add-line2-btn">
+      <span class="plus-circle">+</span> Add street address 2
+    </button>
+    <div class="form-field full" id="line2-field" style="display:none;">
+      <label>Street 2:</label>
+      <input type="text" id="address-line2" autocomplete="address-line2" />
+    </div>
+
+    <div class="form-row">
+      <div class="form-field">
+        <label>City:<span class="req">*</span></label>
+        <input type="text" id="city" autocomplete="address-level2" />
+        <div class="field-error" id="err-city">City is required.</div>
+      </div>
+      <div class="form-field">
+        <label>State/Province:<span class="req">*</span></label>
+        <select id="state"></select>
+        <div class="field-error" id="err-state">State/Province is required.</div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-field">
+        <label>ZIP/Postal Code:<span class="req">*</span></label>
+        <input type="text" id="postal-code" autocomplete="postal-code" />
+        <div class="field-error" id="err-postal-code">Postal code is required.</div>
+      </div>
+      <div class="form-field">
+        <label>Country:<span class="req">*</span></label>
+        <select id="country"></select>
+      </div>
+    </div>
+
+    <label class="checkbox-row">
+      <input type="checkbox" id="anonymous" />
+      <span>Please make my donation anonymous</span>
+    </label>
+
+    <label class="checkbox-row" id="spouse-toggle">
+      <input type="checkbox" id="include-spouse" />
+      <span>Include a spouse / partner name with the donation</span>
+    </label>
+
+    <div class="form-field full" id="spouse-field" style="display:none;">
+      <label>Spouse / Partner Name:</label>
+      <input type="text" id="spouse-name" />
+    </div>
+
+    <div class="error-msg" id="submit-error"></div>
+
+    <div class="step-nav">
+      <button type="button" class="back-btn" id="back-btn">Back</button>
+      <button type="button" class="primary-btn" id="submit-btn">Continue to Payment</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ---------------- Step 1 state ----------------
+  const MIN_AMOUNT = 1;
+  const MAX_AMOUNT = 999999;
+  let selectedAmount = null;
+  let isMonthly = false;
+
+  const grid = document.getElementById('amount-grid');
+  const tiles = Array.from(grid.querySelectorAll('.amount-tile'));
+  const customTile = document.getElementById('custom-tile');
+  const monthlyToggle = document.getElementById('monthly-toggle');
+  const continueBtn = document.getElementById('continue-btn');
+  const fundSelect = document.getElementById('fund-select');
+
+  function sanitizeAmountInput(raw) {
+    let cleaned = raw.replace(/[^0-9.]/g, '');
+    const firstDot = cleaned.indexOf('.');
+    if (firstDot !== -1) {
+      cleaned = cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+    }
+    const dotIndex = cleaned.indexOf('.');
+    if (dotIndex !== -1) cleaned = cleaned.slice(0, dotIndex + 3);
+    cleaned = cleaned.replace(/^0+(?=\d)/, '');
+    return cleaned;
+  }
+
+  function renderCustomInput() {
+    customTile.outerHTML = `
+      <div class="custom-input-wrap" id="custom-input-wrap">
+        <span>$</span>
+        <input type="text" inputmode="decimal" autocomplete="off"
+          id="custom-amount-input" placeholder="Enter amount" maxlength="9" />
+      </div>
+    `;
+    const input = document.getElementById('custom-amount-input');
+    input.focus();
+    input.addEventListener('input', () => {
+      const cursorAtEnd = input.selectionEnd === input.value.length;
+      const sanitized = sanitizeAmountInput(input.value);
+      if (sanitized !== input.value) {
+        input.value = sanitized;
+        if (cursorAtEnd) input.setSelectionRange(sanitized.length, sanitized.length);
+      }
+      const val = parseFloat(sanitized);
+      selectedAmount = (!isFinite(val) || val < MIN_AMOUNT || val > MAX_AMOUNT)
+        ? null
+        : Math.round(val * 100) / 100;
+      updateContinueButton();
+    });
+    input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text');
+      input.value = sanitizeAmountInput(text);
+      input.dispatchEvent(new Event('input'));
+    });
+  }
+
+  function selectTile(tile) {
+    tiles.forEach(t => t.classList.remove('selected'));
+    if (tile.dataset.amount === 'custom') {
+      renderCustomInput();
+      selectedAmount = null;
+    } else {
+      tile.classList.add('selected');
+      selectedAmount = Number(tile.dataset.amount);
+    }
+    updateContinueButton();
+  }
+
+  grid.addEventListener('click', (e) => {
+    const tile = e.target.closest('.amount-tile');
+    if (tile) selectTile(tile);
+  });
+
+  monthlyToggle.addEventListener('click', () => {
+    isMonthly = !isMonthly;
+    monthlyToggle.classList.toggle('active', isMonthly);
+  });
+
+  function updateContinueButton() {
+    if (selectedAmount && selectedAmount > 0) {
+      continueBtn.textContent = `Continue — $${selectedAmount.toLocaleString()}${isMonthly ? '/month' : ''}`;
+      continueBtn.disabled = false;
+    } else {
+      continueBtn.textContent = 'Select an amount';
+      continueBtn.disabled = true;
+    }
+  }
+
+  continueBtn.addEventListener('click', () => {
+    if (!Number.isFinite(selectedAmount) || selectedAmount < MIN_AMOUNT || selectedAmount > MAX_AMOUNT) return;
+    document.getElementById('step-1').classList.remove('active');
+    document.getElementById('step-2').classList.add('active');
+  });
+
+  // ---------------- Step 2: My Information ----------------
+  const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
+  const CA_PROVINCES = ["AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT"];
+
+  // ISO 3166-1 alpha-2, common list. Extend as needed.
+  const COUNTRIES = [
+    ["US", "United States"], ["CA", "Canada"], ["GB", "United Kingdom"],
+    ["AU", "Australia"], ["DE", "Germany"], ["FR", "France"], ["IT", "Italy"],
+    ["ES", "Spain"], ["NL", "Netherlands"], ["IE", "Ireland"], ["NZ", "New Zealand"],
+    ["JP", "Japan"], ["IN", "India"], ["KE", "Kenya"], ["ZA", "South Africa"],
+    ["MX", "Mexico"], ["BR", "Brazil"], ["SG", "Singapore"], ["CH", "Switzerland"],
+    ["SE", "Sweden"],
+  ];
+
+  const stateSelect = document.getElementById('state');
+  const countrySelect = document.getElementById('country');
+
+  function populateStates(countryCode) {
+    let options = [];
+    if (countryCode === 'US') options = US_STATES;
+    else if (countryCode === 'CA') options = CA_PROVINCES;
+
+    if (options.length === 0) {
+      stateSelect.innerHTML = '<option value="">N/A</option>';
+      stateSelect.disabled = true;
+    } else {
+      stateSelect.disabled = false;
+      stateSelect.innerHTML = '<option value="">Select…</option>' +
+        options.map(s => `<option value="${s}">${s}</option>`).join('');
+    }
+  }
+
+  countrySelect.innerHTML = COUNTRIES
+    .map(([code, name]) => `<option value="${code}"${code === 'US' ? ' selected' : ''}>${name}</option>`)
+    .join('');
+  populateStates('US');
+  countrySelect.addEventListener('change', () => populateStates(countrySelect.value));
+
+  // Organization toggle
+  const orgCheckbox = document.getElementById('on-behalf-org');
+  const orgField = document.getElementById('org-field');
+  orgCheckbox.addEventListener('change', () => {
+    orgField.style.display = orgCheckbox.checked ? 'block' : 'none';
+  });
+
+  // Address line 2 toggle
+  const addLine2Btn = document.getElementById('add-line2-btn');
+  const line2Field = document.getElementById('line2-field');
+  addLine2Btn.addEventListener('click', () => {
+    line2Field.style.display = 'block';
+    addLine2Btn.style.display = 'none';
+    document.getElementById('address-line2').focus();
+  });
+
+  // Spouse/partner toggle
+  const spouseCheckbox = document.getElementById('include-spouse');
+  const spouseField = document.getElementById('spouse-field');
+  spouseCheckbox.addEventListener('change', () => {
+    spouseField.style.display = spouseCheckbox.checked ? 'block' : 'none';
+  });
+
+  document.getElementById('back-btn').addEventListener('click', () => {
+    document.getElementById('step-2').classList.remove('active');
+    document.getElementById('step-1').classList.add('active');
+  });
+
+  function showFieldError(inputId, show) {
+    const input = document.getElementById(inputId);
+    const err = document.getElementById('err-' + inputId);
+    if (input) input.classList.toggle('invalid', show);
+    if (err) err.style.display = show ? 'block' : 'none';
+  }
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function validateStep2() {
+    const values = {
+      firstName: document.getElementById('first-name').value.trim(),
+      lastName: document.getElementById('last-name').value.trim(),
+      onBehalfOfOrg: orgCheckbox.checked,
+      organization: document.getElementById('organization').value.trim(),
+      phone: document.getElementById('phone').value.trim(),
+      email: document.getElementById('email').value.trim(),
+      addressLine1: document.getElementById('address-line1').value.trim(),
+      addressLine2: document.getElementById('address-line2').value.trim(),
+      city: document.getElementById('city').value.trim(),
+      state: stateSelect.value,
+      postalCode: document.getElementById('postal-code').value.trim(),
+      country: countrySelect.value,
+      anonymous: document.getElementById('anonymous').checked,
+      includeSpouse: spouseCheckbox.checked,
+      spouseName: document.getElementById('spouse-name').value.trim(),
+    };
+
+    let valid = true;
+    const requireField = (id, ok) => { showFieldError(id, !ok); if (!ok) valid = false; };
+
+    requireField('first-name', values.firstName.length > 0);
+    requireField('last-name', values.lastName.length > 0);
+    if (values.onBehalfOfOrg) requireField('organization', values.organization.length > 0);
+    requireField('email', EMAIL_RE.test(values.email));
+    requireField('address-line1', values.addressLine1.length > 0);
+    requireField('city', values.city.length > 0);
+    requireField('postal-code', values.postalCode.length > 0);
+    if (!stateSelect.disabled) requireField('state', values.state.length > 0);
+
+    return { valid, values };
+  }
+
+  const submitBtn = document.getElementById('submit-btn');
+  const submitError = document.getElementById('submit-error');
+
+  submitBtn.addEventListener('click', async () => {
+    submitError.style.display = 'none';
+    const { valid, values } = validateStep2();
+    if (!valid) return;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Redirecting…';
+
+    try {
+      const response = await fetch('/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: selectedAmount,
+          recurring: isMonthly,
+          fund: fundSelect.value,
+          donor: values,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Something went wrong. Please try again.');
+      }
+
+      const data = await response.json();
+      window.location.href = data.url;
+    } catch (err) {
+      submitError.textContent = err.message;
+      submitError.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Continue to Payment';
+    }
+  });
+</script>
+
+</body>
+</html>
