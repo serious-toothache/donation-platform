@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const db = require('./db'); // picks postgres.js or sqlite.js based on DB_DRIVER
@@ -52,24 +53,16 @@ app.post(
       }
 
       switch (event.type) {
-        case 'checkout.session.completed': {
-          const session = event.data.object;
-          // We already wrote the full donor profile to the DB at checkout-
-          // creation time (see upsertDonorProfile below), since we collect
-          // it ourselves via the "My Information" form. This just confirms
-          // the donor record exists, keyed by the same Stripe customer id.
-          const donorId = await db.findOrCreateDonor({
-            stripeCustomerId: session.customer,
-            email: session.customer_details?.email,
-            name: session.customer_details?.name,
-            country: session.customer_details?.address?.country,
-          });
-          await db.markDonationCompleted({
-            checkoutSessionId: session.id,
-            donorId,
-            subscriptionId: session.subscription || null,
-          });
-          console.log('Donation completed:', session.id, session.amount_total);
+        case 'payment_intent.succeeded': {
+          const paymentIntent = event.data.object;
+          // donor_id and stripe_subscription_id were already set when we
+          // created this donation row (see createPendingDonation below) —
+          // we collected the donor's info and, for recurring gifts, created
+          // the Subscription ourselves before payment, unlike the old
+          // redirect-based Checkout flow where Stripe collected it for us
+          // after the fact. This just flips pending → completed.
+          await db.markDonationSucceeded({ stripePaymentIntentId: paymentIntent.id });
+          console.log('Donation succeeded:', paymentIntent.id, paymentIntent.amount);
           break;
         }
         case 'invoice.paid': {
@@ -107,10 +100,18 @@ app.use(express.static('public'));
 
 // The publishable key is designed to be public (it's embedded in every
 // Stripe.js page load anyway) — safe to expose via a plain GET, unlike
-// STRIPE_SECRET_KEY. Useful if you add Stripe.js/Elements client-side
-// later; not needed by the current hosted-Checkout-redirect flow.
+// STRIPE_SECRET_KEY. The frontend fetches this to initialize Stripe.js for
+// the embedded Payment Element modal.
 app.get('/config', (req, res) => {
   res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY });
+});
+
+// Extensionless route so express.static's default /success.html isn't
+// required — matches the return_url used in stripe.confirmPayment() for
+// payment methods that require an off-site redirect step (e.g. some bank
+// redirects), and where the JS also sends donors after an inline success.
+app.get('/success', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'success.html'));
 });
 
 // ---- Server-side source of truth for donation input. Never trust the client. ----
@@ -238,7 +239,7 @@ function validateDonationInput(body) {
   return { errors, amount, recurring, fund };
 }
 
-app.post('/create-checkout-session', checkoutLimiter, async (req, res) => {
+app.post('/create-payment-intent', checkoutLimiter, async (req, res) => {
   const { errors, amount, recurring, fund } = validateDonationInput(req.body);
   const donorResult = validateDonorInput(req.body.donor);
 
@@ -257,17 +258,12 @@ app.post('/create-checkout-session', checkoutLimiter, async (req, res) => {
   const fullName = onBehalfOfOrg && organization ? organization : `${firstName} ${lastName}`;
   const unitAmount = Math.round(amount * 100);
 
-  // Per docs.stripe.com/api/idempotent_requests: an idempotency key lets you
-  // safely retry this request (e.g. the browser retries after a dropped
-  // connection) without Stripe creating a second, duplicate Checkout
-  // Session/charge. Generate a fresh key per logical donation attempt —
-  // don't reuse one key across genuinely different requests.
+  // Per docs.stripe.com/api/idempotent_requests: safe to retry this request
+  // (e.g. a dropped connection) without Stripe creating a duplicate
+  // PaymentIntent/Subscription. Fresh key per logical donation attempt.
   const idempotencyKey = crypto.randomUUID();
 
   try {
-    // We already collected the full billing address ourselves via the
-    // "My Information" form, so create the Customer object directly rather
-    // than asking Stripe's hosted page to collect it again.
     const customer = await stripe.customers.create({
       name: fullName,
       email,
@@ -287,62 +283,9 @@ app.post('/create-checkout-session', checkoutLimiter, async (req, res) => {
       },
     });
 
-    const session = await stripe.checkout.sessions.create(
-      {
-        payment_method_types: ['card'],
-        // Per docs.stripe.com/payments/payment-method-configurations:
-        // "Checkout supports Apple Pay and Google Pay with no integration
-        // changes" — the 'card' payment method type above already renders
-        // both wallets automatically for eligible browsers/devices. This
-        // works because Checkout redirects to Stripe's own hosted page
-        // (checkout.stripe.com), so the domain-registration requirement
-        // that applies to *embedded* Elements/Checkout integrations does
-        // not apply here.
-        //
-        // Two things to know:
-        // 1. Apple Pay is enabled by default; Google Pay is NOT — toggle
-        //    it on in Dashboard → Settings → Payment methods.
-        // 2. Stripe never renders either wallet for India-based IPs or
-        //    India-based Stripe accounts, regardless of configuration —
-        //    don't mistake that for a bug while testing.
-        mode: recurring ? 'subscription' : 'payment',
-        customer: customer.id,
-        line_items: [
-          {
-            price_data: {
-              currency: 'usd',
-              product_data: {
-                name: recurring ? 'Monthly donation' : 'One-time donation',
-                // product_data.metadata is the only place line-item-level
-                // metadata is accepted by Checkout Sessions — a plain
-                // metadata key on the line item itself is rejected by
-                // the API with a parameter_unknown error.
-                metadata: { fund },
-              },
-              unit_amount: unitAmount,
-              ...(recurring ? { recurring: { interval: 'month' } } : {}),
-            },
-            quantity: 1,
-          },
-        ],
-        metadata: {
-          fund,
-          recurring: String(recurring),
-          anonymous: String(anonymous),
-          spouse_name: includeSpouse ? spouseName : '',
-        },
-        // We already collected the address ourselves — 'auto' lets Stripe
-        // skip re-asking unless a specific payment method requires more.
-        billing_address_collection: 'auto',
-        success_url: `${process.env.APP_URL}/success`,
-        cancel_url: `${process.env.APP_URL}/cancel`,
-      },
-      { idempotencyKey }
-    );
-
-    // Store the donor profile immediately — we already have it in full,
-    // no need to wait for the webhook the way we do for payment status.
-    await db.upsertDonorProfile({
+    // We already have the full donor profile — store it now rather than
+    // waiting for a webhook, and keep the id to link the donation row below.
+    const donorId = await db.upsertDonorProfile({
       stripeCustomerId: customer.id,
       email,
       name: fullName,
@@ -356,12 +299,87 @@ app.post('/create-checkout-session', checkoutLimiter, async (req, res) => {
       country,
     });
 
+    const metadata = {
+      fund,
+      recurring: String(recurring),
+      anonymous: String(anonymous),
+      spouse_name: includeSpouse ? spouseName : '',
+    };
+
+    let paymentIntentId;
+    let clientSecret;
+    let subscriptionId = null;
+
+    if (recurring) {
+      // Per docs.stripe.com/billing/subscriptions/build-subscriptions:
+      // payment_behavior: 'default_incomplete' creates the Subscription in
+      // an "incomplete" state and generates a first Invoice + PaymentIntent
+      // without charging anything yet — the Payment Element on the client
+      // then confirms that PaymentIntent to actually collect payment.
+      const subscription = await stripe.subscriptions.create(
+        {
+          customer: customer.id,
+          items: [
+            {
+              price_data: {
+                currency: 'usd',
+                product_data: {
+                  name: 'Monthly donation',
+                  metadata: { fund },
+                },
+                unit_amount: unitAmount,
+                recurring: { interval: 'month' },
+              },
+            },
+          ],
+          payment_behavior: 'default_incomplete',
+          // Per docs.stripe.com/billing/subscriptions/payment-methods-setting:
+          // subscriptions don't have an automatic_payment_methods flag like
+          // PaymentIntents do — omitting payment_method_types entirely (as
+          // done here) makes Stripe apply whatever's enabled in Dashboard →
+          // Settings → Payment methods automatically, same practical effect.
+          payment_settings: {
+            save_default_payment_method: 'on_subscription',
+          },
+          expand: ['latest_invoice.payment_intent'],
+          metadata,
+        },
+        { idempotencyKey }
+      );
+
+      subscriptionId = subscription.id;
+      const invoicePaymentIntent = subscription.latest_invoice.payment_intent;
+      paymentIntentId = invoicePaymentIntent.id;
+      clientSecret = invoicePaymentIntent.client_secret;
+    } else {
+      // automatic_payment_methods lets Stripe decide which methods to show
+      // in the Payment Element (card, Apple Pay, Google Pay, bank debit,
+      // etc.) based on your Dashboard configuration — same principle as
+      // 'card' automatically enabling wallets on hosted Checkout, just
+      // configured centrally instead of listed explicitly here.
+      const paymentIntent = await stripe.paymentIntents.create(
+        {
+          amount: unitAmount,
+          currency: 'usd',
+          customer: customer.id,
+          automatic_payment_methods: { enabled: true },
+          metadata,
+        },
+        { idempotencyKey }
+      );
+
+      paymentIntentId = paymentIntent.id;
+      clientSecret = paymentIntent.client_secret;
+    }
+
     // Record the donation as "pending" immediately, before the donor even
-    // reaches Stripe's payment page. The webhook above flips it to
-    // "completed" once payment actually succeeds. This means abandoned
-    // checkouts show up as pending rather than vanishing entirely.
+    // opens the payment modal. The webhook flips it to "completed" once
+    // payment_intent.succeeded actually fires. donor_id and
+    // stripe_subscription_id are already known, so they're set right away.
     await db.createPendingDonation({
-      checkoutSessionId: session.id,
+      stripePaymentIntentId: paymentIntentId,
+      donorId,
+      stripeSubscriptionId: subscriptionId,
       fund,
       amountCents: unitAmount,
       currency: 'usd',
@@ -369,7 +387,7 @@ app.post('/create-checkout-session', checkoutLimiter, async (req, res) => {
       isAnonymous: anonymous,
     });
 
-    res.json({ url: session.url });
+    res.json({ clientSecret });
   } catch (err) {
     // Stripe's Node SDK throws typed errors (docs.stripe.com/error-handling).
     // Branch on err.type to react appropriately and avoid leaking internals.

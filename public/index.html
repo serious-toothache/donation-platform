@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <title>Donate</title>
+<script src="https://js.stripe.com/v3/"></script>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -284,6 +285,104 @@
     display: none;
   }
 
+  /* ---------- Payment modal ---------- */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 33, 61, 0.55);
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 16px;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal-box {
+    background: #fff;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 32px 28px 24px;
+    position: relative;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+  }
+
+  .modal-close {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    color: #0e6e83;
+    cursor: pointer;
+    padding: 4px;
+  }
+
+  .modal-lock-icon {
+    display: block;
+    margin: 0 auto 16px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .modal-title {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    color: #14213d;
+    margin: 0 0 12px;
+  }
+
+  .modal-subtext {
+    text-align: center;
+    font-size: 13px;
+    color: #555;
+    margin: 0 0 24px;
+    line-height: 1.5;
+  }
+
+  #payment-element {
+    margin-bottom: 20px;
+  }
+
+  .modal-total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 15px;
+    color: #1a1a1a;
+    border-top: 1px solid #e5e5e5;
+    padding-top: 16px;
+    margin-bottom: 16px;
+  }
+  .modal-total-row strong { font-size: 17px; }
+
+  .modal-error {
+    color: #b00020;
+    font-size: 13px;
+    margin-bottom: 12px;
+    display: none;
+  }
+
+  .modal-pay-btn {
+    width: 100%;
+    background: #0e6e83;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 15px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .modal-pay-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .modal-pay-btn:hover:not(:disabled) { background: #0b5c6e; }
+
 </style>
 </head>
 <body>
@@ -421,6 +520,32 @@
 
     <button type="button" class="primary-btn" id="submit-btn" disabled>Select an amount</button>
 
+</div>
+
+<!-- ===================== Payment modal ===================== -->
+<div class="modal-overlay" id="payment-modal-overlay">
+  <div class="modal-box">
+    <button type="button" class="modal-close" id="modal-close-btn" aria-label="Close">&times;</button>
+
+    <svg class="modal-lock-icon" viewBox="0 0 24 24" fill="none" stroke="#14213d" stroke-width="1.5">
+      <rect x="4" y="11" width="16" height="9" rx="1.5"/>
+      <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+      <circle cx="12" cy="15.5" r="1.5" fill="#14213d" stroke="none"/>
+    </svg>
+
+    <h3 class="modal-title">Payment method</h3>
+    <p class="modal-subtext">Our strict PCI-compliance standards keep your data safe.</p>
+
+    <div class="modal-error" id="modal-error"></div>
+    <div id="payment-element"><!-- Stripe Payment Element mounts here --></div>
+
+    <div class="modal-total-row">
+      <span>Total amount</span>
+      <strong id="modal-total-amount">$0.00</strong>
+    </div>
+
+    <button type="button" class="modal-pay-btn" id="modal-pay-btn">Finish and pay</button>
+  </div>
 </div>
 
 <script>
@@ -681,6 +806,43 @@
 
   const submitError = document.getElementById('submit-error');
 
+  // ---------------- Payment modal (Stripe Payment Element) ----------------
+  let stripe = null;
+  let elements = null;
+  let currentClientSecret = null;
+
+  const modalOverlay = document.getElementById('payment-modal-overlay');
+  const modalCloseBtn = document.getElementById('modal-close-btn');
+  const modalError = document.getElementById('modal-error');
+  const modalPayBtn = document.getElementById('modal-pay-btn');
+  const modalTotalAmount = document.getElementById('modal-total-amount');
+
+  async function getStripe() {
+    if (stripe) return stripe;
+    // The publishable key is safe to fetch client-side — see /config on
+    // the server, and docs.stripe.com/keys re: publishable vs secret keys.
+    const res = await fetch('/config');
+    const { publishableKey } = await res.json();
+    stripe = Stripe(publishableKey);
+    return stripe;
+  }
+
+  function openModal() {
+    modalOverlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeModal() {
+    modalOverlay.classList.remove('open');
+    document.body.style.overflow = '';
+    modalError.style.display = 'none';
+  }
+
+  modalCloseBtn.addEventListener('click', closeModal);
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) closeModal();
+  });
+
   submitBtn.addEventListener('click', async () => {
     submitError.style.display = 'none';
 
@@ -699,10 +861,10 @@
 
     submitBtn.dataset.submitting = 'true';
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Redirecting…';
+    submitBtn.textContent = 'Loading payment form…';
 
     try {
-      const response = await fetch('/create-checkout-session', {
+      const response = await fetch('/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -719,13 +881,81 @@
       }
 
       const data = await response.json();
-      window.location.href = data.url;
+      currentClientSecret = data.clientSecret;
+
+      const stripeInstance = await getStripe();
+
+      // Per docs.stripe.com/payments/accept-a-payment: initialize Elements
+      // with the PaymentIntent/Subscription-invoice client secret, then
+      // mount a Payment Element — Stripe renders the payment-method picker
+      // (card, Apple Pay, Google Pay, and anything else enabled in
+      // Dashboard → Settings → Payment methods) and the card-entry step
+      // shown in it, entirely inside this modal — no page navigation.
+      elements = stripeInstance.elements({ clientSecret: currentClientSecret });
+      const paymentElement = elements.create('payment');
+      paymentElement.mount('#payment-element');
+
+      modalTotalAmount.textContent =
+        `$${selectedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` +
+        (isMonthly ? '/mo' : '');
+
+      openModal();
     } catch (err) {
       submitError.textContent = err.message;
       submitError.style.display = 'block';
+    } finally {
       submitBtn.dataset.submitting = 'false';
       submitBtn.disabled = false;
       updateSubmitButton();
+    }
+  });
+
+  modalPayBtn.addEventListener('click', async () => {
+    if (!stripe || !elements || !currentClientSecret) return;
+
+    modalError.style.display = 'none';
+    modalPayBtn.disabled = true;
+    modalPayBtn.textContent = 'Processing…';
+
+    // Per docs.stripe.com/payments/accept-a-payment-deferred and
+    // docs.stripe.com/payments/payment-status-updates: elements.submit()
+    // validates/collects the chosen payment method first, then
+    // confirmPayment finalizes it. redirect: 'if_required' keeps the donor
+    // in this modal for payment methods that don't need an off-site
+    // redirect (most cards); methods like some bank redirects will still
+    // navigate away and back via return_url.
+    const { error: submitErr } = await elements.submit();
+    if (submitErr) {
+      modalError.textContent = submitErr.message;
+      modalError.style.display = 'block';
+      modalPayBtn.disabled = false;
+      modalPayBtn.textContent = 'Finish and pay';
+      return;
+    }
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      clientSecret: currentClientSecret,
+      confirmParams: {
+        return_url: `${window.location.origin}/success`,
+      },
+      redirect: 'if_required',
+    });
+
+    if (error) {
+      modalError.textContent = error.message || 'Payment failed. Please try again.';
+      modalError.style.display = 'block';
+      modalPayBtn.disabled = false;
+      modalPayBtn.textContent = 'Finish and pay';
+      return;
+    }
+
+    if (paymentIntent && paymentIntent.status === 'succeeded') {
+      window.location.href = '/success';
+    } else {
+      // Some methods land in 'processing' — the webhook will confirm the
+      // donation server-side once it actually completes.
+      window.location.href = '/success?status=' + (paymentIntent ? paymentIntent.status : 'processing');
     }
   });
 </script>

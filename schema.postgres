@@ -1,0 +1,45 @@
+-- Run this once against your Postgres database to set up the schema:
+--   psql "$DATABASE_URL" -f schema.sql
+
+CREATE TABLE IF NOT EXISTS donors (
+  id                 SERIAL PRIMARY KEY,
+  stripe_customer_id TEXT UNIQUE,
+  email              TEXT,
+  name               TEXT,
+  phone              TEXT,
+  organization       TEXT,
+  spouse_name        TEXT,
+  address_line1      TEXT,
+  address_line2      TEXT,
+  city               TEXT,
+  state              TEXT,
+  postal_code        TEXT,
+  country            TEXT, -- two-letter ISO 3166-1 code, e.g. 'US'
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS donations (
+  id                       SERIAL PRIMARY KEY,
+  donor_id                 INTEGER REFERENCES donors(id),
+  stripe_payment_intent_id TEXT UNIQUE NOT NULL,
+  stripe_subscription_id   TEXT,
+  fund                     TEXT NOT NULL,
+  amount_cents             INTEGER NOT NULL CHECK (amount_cents > 0),
+  currency                 TEXT NOT NULL DEFAULT 'usd',
+  recurring                BOOLEAN NOT NULL DEFAULT false,
+  is_anonymous             BOOLEAN NOT NULL DEFAULT false,
+  status                   TEXT NOT NULL DEFAULT 'pending', -- pending | completed | canceled | refunded
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_donations_donor_id ON donations(donor_id);
+CREATE INDEX IF NOT EXISTS idx_donations_status ON donations(status);
+
+-- Tracks every processed Stripe webhook event ID so retried/duplicate
+-- deliveries (Stripe guarantees at-least-once delivery) are ignored instead
+-- of double-processing a donation.
+CREATE TABLE IF NOT EXISTS processed_webhook_events (
+  event_id     TEXT PRIMARY KEY,
+  event_type   TEXT NOT NULL,
+  processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

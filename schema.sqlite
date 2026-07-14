@@ -1,0 +1,45 @@
+-- Run this once to set up the SQLite database:
+--   sqlite3 donations.db < schema.sqlite.sql
+
+CREATE TABLE IF NOT EXISTS donors (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  stripe_customer_id TEXT UNIQUE,
+  email              TEXT,
+  name               TEXT,
+  phone              TEXT,
+  organization       TEXT,
+  spouse_name        TEXT,
+  address_line1      TEXT,
+  address_line2      TEXT,
+  city               TEXT,
+  state              TEXT,
+  postal_code        TEXT,
+  country             TEXT, -- two-letter ISO 3166-1 code, e.g. 'US'
+  created_at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS donations (
+  id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+  donor_id                    INTEGER REFERENCES donors(id),
+  stripe_payment_intent_id    TEXT UNIQUE NOT NULL,
+  stripe_subscription_id      TEXT,
+  fund                        TEXT NOT NULL,
+  amount_cents                INTEGER NOT NULL CHECK (amount_cents > 0),
+  currency                    TEXT NOT NULL DEFAULT 'usd',
+  recurring                   INTEGER NOT NULL DEFAULT 0, -- 0/1, SQLite has no native boolean
+  is_anonymous                INTEGER NOT NULL DEFAULT 0,
+  status                      TEXT NOT NULL DEFAULT 'pending', -- pending | completed | canceled | refunded
+  created_at                  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_donations_donor_id ON donations(donor_id);
+CREATE INDEX IF NOT EXISTS idx_donations_status ON donations(status);
+
+-- Tracks every processed Stripe webhook event ID so retried/duplicate
+-- deliveries (Stripe guarantees at-least-once delivery) are ignored instead
+-- of double-processing a donation.
+CREATE TABLE IF NOT EXISTS processed_webhook_events (
+  event_id     TEXT PRIMARY KEY,
+  event_type   TEXT NOT NULL,
+  processed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
